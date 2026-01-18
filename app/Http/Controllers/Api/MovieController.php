@@ -13,134 +13,130 @@ class MovieController extends Controller
     {
         $query = Movie::with('categories');
 
-        //Search by Judul Film
-        if ($request->filled('search')){
-            $query ->where('movie_name', 'like', '%' . $request->search .'%');
+        // Filter release year
+        if ($request->filled('release_year')) {
+            $query->where('release_year', $request->release_year);
         }
 
-        //Filter by id
-        if ($request->filled('movie_category_id')){
-            $query ->where('movie_category_id', $request->movie_category_id);
+        // Search by title
+        if ($request->filled('search')) {
+            $query->where('movie_name', 'like', '%' . $request->search . '%');
         }
 
-        //Sorting
-        if ($request->get('sort_by') === 'rating') {
-        // Jsort_by=rating, DESC
-        $query->orderBy('rating', 'desc');
-        } else {
-        // Default: urut berdasarkan movie_id ASC
-        $query->orderBy('movie_id', 'asc');
+        // Filter by category
+        if ($request->filled('category_id')) {
+            $query->whereHas('categories', function ($q) use ($request) {
+                $q->where('category.category_id', $request->category_id);
+            });
         }
 
+        // Sorting
+        match ($request->get('sort_by')) {
+            'rating' => $query->orderBy('rating', 'desc'),
+            'newest' => $query->orderBy('release_year', 'desc'),
+            default  => $query->orderBy('movie_id', 'asc'),
+        };
 
+        // Without pagination
         if ($request->boolean('all')) {
-            $movie = $query->get();
             return response()->json([
                 'success' => true,
                 'message' => 'Daftar semua film',
-                'data' => $movie
-            ], 200);
+                'data' => $query->get(),
+            ]);
         }
 
-        $movie = $query->paginate($request->get('per_page', 10));
+        $movies = $query->paginate($request->get('per_page', 10));
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar film',
-            'data' => $movie->items(),
+            'data' => $movies->items(),
             'meta' => [
-                'current_page' => $movie->currentPage(),
-                'last_page' => $movie->lastPage(),
-                'per_page' => $movie->perPage(),
-                'total' => $movie->total(),
+                'current_page' => $movies->currentPage(),
+                'last_page'    => $movies->lastPage(),
+                'per_page'     => $movies->perPage(),
+                'total'        => $movies->total(),
             ]
         ]);
     }
 
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'movie_name' => 'required|string|max:255',
-            'release_year' => 'required|integer|min:1900|max:2030',
-            'rating' => 'required|numeric|min:0|max:10',
-            'movie_category_id' => 'required|integer|exists:movie_category,movie_category_id'
-        ], 
-        [
-            'movie_name.required' => 'Nama film harus diisi',
-            'release_year.required' => 'Tahun rilis harus diisi',
-            'release_year.min' => 'Tahun rilis minimal tahun 1900',
-            'release_year.max' => 'Tahun rilis minimal tahun 2030',
-            'rating.required' => 'Rating film harus diisi',
-            'rating.min' => 'Rating minimal 0',
-            'rating.max' => 'Rating maksimal 10',
-            'movie_category_id.required' => 'Kategori id harus diisi',
+            'movie_name'     => 'required|string|max:255',
+            'release_year'   => 'required|integer|min:1900|max:2030',
+            'rating'         => 'required|numeric|min:0|max:10',
+            'description'    => 'nullable|string',
+            'poster_url'     => 'nullable|url',
+            'background_url' => 'nullable|url',
+            'category_ids'   => 'required|array',
+            'category_ids.*' => 'exists:category,category_id'
         ]);
 
         $movie = Movie::create($validated);
+
+        $movie->categories()->attach($request->category_ids);
+
         return response()->json([
-            'success'=> true,
-            'message'=> 'Film berhasil ditambahkan',
-            'data'=> $movie,
-        ],201);
+            'success' => true,
+            'message' => 'Film berhasil ditambahkan',
+            'data' => $movie->load('categories'),
+        ], 201);
     }
 
     public function show(string $id): JsonResponse
     {
-        $movie = Movie::with(['categories'])->find($id);
+        $movie = Movie::with('categories')->find($id);
 
-        if(! $movie) {
+        if (!$movie) {
             return response()->json([
-                'success'=> false,
-                'message'=> 'Film tidak ditemukan',
+                'success' => false,
+                'message' => 'Film tidak ditemukan'
             ], 404);
         }
 
         return response()->json([
-                'success'=> true,
-                'message'=> 'Film berhasil ditemukan',
-                'data' => $movie
-            ]);
+            'success' => true,
+            'message' => 'Detail film',
+            'data' => $movie
+        ]);
     }
 
     public function update(Request $request, Movie $movie): JsonResponse
     {
         $validated = $request->validate([
-            'movie_name' => 'sometimes|required|string|max:255',
-            'release_year' => 'sometimes|required|integer|min:1900|max:2030',
-            'rating' => 'sometimes|required|numeric|min:0|max:10',
-            'movie_category_id' => 'sometimes|required|integer|exists:movie_category,movie_category_id'
-        ], 
-        [
-            'movie_name.required' => 'Nama film harus diisi',
-            'release_year.required' => 'Tahun rilis harus diisi',
-            'release_year.min' => 'Tahun rilis minimal tahun 1900',
-            'release_year.max' => 'Tahun rilis minimal tahun 2030',
-            'rating.required' => 'Rating film harus diisi',
-            'rating.min' => 'Rating minimal 0',
-            'rating.max' => 'Rating maksimal 10',
-            'movie_category_id.required' => 'Kategori id harus diisi',
+            'movie_name'     => 'sometimes|string|max:255',
+            'release_year'   => 'sometimes|integer|min:1900|max:2030',
+            'rating'         => 'sometimes|numeric|min:0|max:10',
+            'description'    => 'nullable|string',
+            'poster_url'     => 'nullable|url',
+            'background_url' => 'nullable|url',
+            'category_ids'   => 'sometimes|array',
+            'category_ids.*' => 'exists:category,category_id'
         ]);
 
         $movie->update($validated);
 
-        return response()->json([
-            'success'=> true,
-            'message'=> 'Film berhasil diupdate',
-            'data'=> $movie
-        ],200);
+        if ($request->has('category_ids')) {
+            $movie->categories()->sync($request->category_ids);
+        }
 
+        return response()->json([
+            'success' => true,
+            'message' => 'Film berhasil diupdate',
+            'data' => $movie->load('categories')
+        ]);
     }
 
     public function destroy(Movie $movie): JsonResponse
     {
-        $movieName = $movie->movie_name;
-        
+        $title = $movie->movie_name;
         $movie->delete();
-        return response()->json([
-            'success'=> true,
-            'message'=> "Film '{$movieName}' berhasil dihapus",
-            'data'=> $movie,
-        ], 200);
-    }
 
+        return response()->json([
+            'success' => true,
+            'message' => "Film '{$title}' berhasil dihapus",
+        ]);
+    }
 }

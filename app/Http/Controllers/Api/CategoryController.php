@@ -9,97 +9,131 @@ use Illuminate\Http\JsonResponse;
 
 class CategoryController extends Controller
 {
+    /**
+     * GET: /categories
+     * ?all=true → ambil semua
+     * default → pagination
+     */
     public function index(Request $request): JsonResponse
     {
         $query = Category::with('movies');
 
+        // Jika ingin semua tanpa pagination
         if ($request->boolean('all')) {
-            $category = $query->get();
             return response()->json([
                 'success' => true,
                 'message' => 'Daftar semua kategori',
-                'data' => $category
+                'data' => $query->get()
             ]);
         }
 
-        $category = $query->paginate($request->get('per_page', 15));
+        $perPage = $request->get('per_page', 15);
+        $categories = $query->paginate($perPage);
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar kategori',
-            'data' => $category->items(),
+            'data' => $categories->items(),
             'meta' => [
-                'current_page' => $category->currentPage(),
-                'last_page' => $category->lastPage(),
-                'per_page' => $category->perPage(),
-                'total' => $category->total(),
+                'current_page' => $categories->currentPage(),
+                'last_page'    => $categories->lastPage(),
+                'per_page'     => $categories->perPage(),
+                'total'        => $categories->total(),
             ]
         ]);
     }
 
-    public function store(Request $request)
+    /**
+     * POST: /categories
+     */
+    public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'category_name' => 'required|string|max:100|unique:movie_category,category_name'
-        ], 
-        [
-            'category_name.required' => 'Nama Kategori harus diisi',
+            'category_name' => 'required|string|max:100|unique:category,category_name',
+        ], [
+            'category_name.required' => 'Nama kategori harus diisi',
+            'category_name.unique'   => 'Nama kategori sudah ada',
         ]);
+
         $category = Category::create($validated);
+
         return response()->json([
-            'success'=> true,
-            'message'=> 'Kategori berhasil ditambahkan',
-            'data'=> $category,
-        ],201);
+            'success' => true,
+            'message' => 'Kategori berhasil ditambahkan',
+            'data'    => $category,
+        ], 201);
     }
 
+    /**
+     * GET: /categories/{id}
+     */
     public function show(string $id): JsonResponse
     {
         $category = Category::with('movies')->find($id);
-        
-        if(!$category) {
+
+        if (!$category) {
             return response()->json([
-                'success'=> false,
-                'message'=> 'kategori tidak ditemukan'
+                'success' => false,
+                'message' => 'Kategori tidak ditemukan',
             ], 404);
         }
 
         return response()->json([
-                'success'=> true,
-                'message'=> 'Kategori berhasil ditemukan',
-                'data' => $category
-            ]);
+            'success' => true,
+            'message' => 'Detail kategori',
+            'data'    => $category,
+        ]);
     }
 
-    public function update(Request $request, Category $category): JsonResponse
+    /**
+     * PUT/PATCH: /categories/{id}
+     */
+    public function update(Request $request, string $id): JsonResponse
     {
+        $category = Category::find($id);
+
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kategori tidak ditemukan',
+            ], 404);
+        }
+
         $validated = $request->validate([
-            'category_name' => 'sometimes|required|string|max:100|unique:movie_category,category_name',
-        ], 
-        [
-            'category_name.required' => 'Nama Kategori harus diisi',
+            'category_name' => 'required|string|max:100|unique:category,category_name,' . $id . ',category_id',
+        ], [
+            'category_name.required' => 'Nama kategori harus diisi',
         ]);
 
-        $category = $category->update($validated);
+        $category->update($validated);
 
         return response()->json([
-            'success'=> true,
-            'message'=> 'Kategori berhasil diupdate',
-            'data'=> $category,
-        ],201);
+            'success' => true,
+            'message' => 'Kategori berhasil diperbarui',
+            'data'    => $category,
+        ]);
     }
 
-    public function destroy(Category $category): JsonResponse
+    /**
+     * DELETE: /categories/{id}
+     */
+    public function destroy(string $id): JsonResponse
     {
-        $categoryName = $category->category_name;
+        $category = Category::find($id);
 
+        if (!$category) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kategori tidak ditemukan',
+            ], 404);
+        }
+
+        $name = $category->category_name;
         $category->delete();
 
         return response()->json([
-            'success'=> true,
-            'message'=> "Film '{$categoryName}' berhasil dihapus",
-            'data'=> $category,
+            'success' => true,
+            'message' => "Kategori '{$name}' berhasil dihapus",
         ]);
     }
-
 }

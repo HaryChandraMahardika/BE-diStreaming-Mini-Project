@@ -8,112 +8,128 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\Rule;
 
-
 class WatchlistController extends Controller
 {
+    private array $allowedStatuses = ['watched', 'watching', 'planned'];
+
     public function index(Request $request): JsonResponse
     {
-        $query = Watchlist::with(['users', 'movies'])
-        ->where('user_id', auth()->id());
+        $user = $request->user();
+
+        $query = Watchlist::with('movie')
+            ->where('user_id', $user->user_id);
 
         if ($request->boolean('all')) {
-            $watchlist = $query->get();
             return response()->json([
                 'success' => true,
                 'message' => 'Daftar semua watchlist',
-                'data' => $watchlist
+                'data' => $query->get(),
             ]);
         }
 
-        $watchlist = $query->paginate($request->get('per_page', 15));
+        $watchlists = $query->paginate($request->get('per_page', 10));
 
         return response()->json([
             'success' => true,
             'message' => 'Daftar watchlist',
-            'data' => $watchlist->items(),
+            'data' => $watchlists->items(),
             'meta' => [
-                'current_page' => $watchlist->currentPage(),
-                'last_page' => $watchlist->lastPage(),
-                'per_page' => $watchlist->perPage(),
-                'total' => $watchlist->total(),
+                'current_page' => $watchlists->currentPage(),
+                'last_page'    => $watchlists->lastPage(),
+                'per_page'     => $watchlists->perPage(),
+                'total'        => $watchlists->total(),
             ]
         ]);
     }
 
-   public function store(Request $request): JsonResponse
-{
-    $validated = $request->validate([
-        'user_id' => 'required|integer',
-        'movie_id' => 'required|integer',
-        'added_date' => 'required|date',
-        'status' => [
-            'required',
-            Rule::in(['AlreadyWatched', 'CurrentlyWatching', 'NotWatchedYet'])
-        ],
-    ]);
+    public function store(Request $request): JsonResponse
+    {
+        $user = $request->user();
 
-    $validated['user_id'] = auth()->id();
-    $watchlist = Watchlist::create($validated);
+        $validated = $request->validate([
+            'movie_id' => [
+                'required',
+                'integer',
+                'exists:movies,movie_id',
+                Rule::unique('watchlist')->where(fn ($q) =>
+                    $q->where('user_id', $user->user_id)
+                ),
+            ],
+            'status' => [
+                'required',
+                Rule::in($this->allowedStatuses),
+            ],
+        ]);
 
-    return response()->json([
-        'success'=> true,
-        'message'=> 'Data watchlist berhasil ditambahkan',
-        'data'=> $watchlist,
-    ], 201);
-}
+        $validated['user_id'] = $user->user_id;
 
-    public function show($id)
-    { 
-
-        $watchlist = Watchlist::with(['users', 'movies'])->findOrFail($id);
-
-        if(! $watchlist) {
-            return response()->json([
-                'success'=> false,
-                'message'=> 'Data watchlist tidak berhasil ditemukan',
-            ], 404);
-        }
+        $watchlist = Watchlist::create($validated);
 
         return response()->json([
-                'success'=> true,
-                'message'=> 'Data watchlist berhasil ditemukan',
-                'data' => $watchlist
-            ]);
+            'success' => true,
+            'message' => 'Watchlist berhasil ditambahkan',
+            'data' => $watchlist->load('movie'),
+        ], 201);
     }
 
-    public function update(Request $request, Watchlist $watchlist)
-{
-    $validated = $request->validate([
-        'user_id'    => 'sometimes|required|integer|exists:users,user_id',
-        'movie_id'   => 'sometimes|required|integer|exists:movies,movie_id',
-        'added_date' => 'sometimes|required|date',
-        'status'     => [
-            'required',
-            Rule::in(['AlreadyWatched', 'CurrentlyWatching', 'NotWatchedYet'])
-        ],
-    ]);
+    public function show($id): JsonResponse
+    {
+        $user = request()->user();
 
-    // update data
-    $watchlist->update($validated);
+        $watchlist = Watchlist::with('movie')
+            ->where('user_id', $user->user_id)
+            ->findOrFail($id);
 
-    return response()->json([
-        'success' => true,
-        'message' => 'Data watchlist berhasil diupdate',
-        'data'    => $watchlist, // model terbaru setelah update
-    ], 200);
-}
+        return response()->json([
+            'success' => true,
+            'message' => 'Detail watchlist',
+            'data' => $watchlist,
+        ]);
+    }
 
-    
+    public function update(Request $request, Watchlist $watchlist): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($watchlist->user_id !== $user->user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kamu tidak punya akses ke data ini',
+            ], 403);
+        }
+
+        $validated = $request->validate([
+            'status' => [
+                'required',
+                Rule::in($this->allowedStatuses),
+            ],
+        ]);
+
+        $watchlist->update($validated);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Status watchlist berhasil diperbarui',
+            'data' => $watchlist->load('movie'),
+        ]);
+    }
 
     public function destroy(Watchlist $watchlist): JsonResponse
     {
-        $watchlistId = $watchlist->watchlist_id;
+        $user = request()->user();
+
+        if ($watchlist->user_id !== $user->user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Kamu tidak punya akses ke data ini',
+            ], 403);
+        }
 
         $watchlist->delete();
+
         return response()->json([
-            'success'=> true,
-            'message'=> "Film '{$watchlistId}' berhasil dihapus",
-            'data'=> $watchlist,
+            'success' => true,
+            'message' => 'Watchlist berhasil dihapus',
         ]);
     }
 }
