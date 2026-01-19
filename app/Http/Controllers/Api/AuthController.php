@@ -56,7 +56,7 @@ class AuthController extends Controller
     public function login(Request $request): JsonResponse
 {
     $validated = $request->validate([
-        'login' => 'required|string', // bisa username atau email
+        'login' => 'required|string', 
         'password' => 'required|string',
     ]);
 
@@ -112,7 +112,6 @@ class AuthController extends Controller
             ], 401);
         }
 
-        // Eager load relasi agar frontend langsung dapat data lengkap
         $user->load([
             'watchlists.movie'
         ]);

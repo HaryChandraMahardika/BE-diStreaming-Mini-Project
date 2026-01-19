@@ -13,31 +13,28 @@ class MovieController extends Controller
     {
         $query = Movie::with('categories');
 
-        // Filter release year
+        
         if ($request->filled('release_year')) {
             $query->where('release_year', $request->release_year);
         }
 
-        // Search by title
         if ($request->filled('search')) {
             $query->where('movie_name', 'like', '%' . $request->search . '%');
         }
 
-        // Filter by category
         if ($request->filled('category_id')) {
             $query->whereHas('categories', function ($q) use ($request) {
                 $q->where('category.category_id', $request->category_id);
             });
         }
 
-        // Sorting
         match ($request->get('sort_by')) {
             'rating' => $query->orderBy('rating', 'desc'),
             'newest' => $query->orderBy('release_year', 'desc'),
             default  => $query->orderBy('movie_id', 'asc'),
         };
 
-        // Without pagination
+
         if ($request->boolean('all')) {
             return response()->json([
                 'success' => true,

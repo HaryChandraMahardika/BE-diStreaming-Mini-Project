@@ -18,7 +18,6 @@ class CategoryController extends Controller
     {
         $query = Category::with('movies');
 
-        // Jika ingin semua tanpa pagination
         if ($request->boolean('all')) {
             return response()->json([
                 'success' => true,

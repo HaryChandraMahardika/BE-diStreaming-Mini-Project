@@ -14,12 +14,11 @@ return new class extends Migration
             $table->unsignedBigInteger('user_id');
             $table->unsignedBigInteger('movie_id');
 
-            // Status watchlist (contoh: planned, watching, completed)
+            
             $table->string('status')->default('planned');
 
             $table->timestamps();
 
-            // Foreign key constraints
             $table->foreign('user_id')
                 ->references('user_id')
                 ->on('users')
@@ -30,7 +29,6 @@ return new class extends Migration
                 ->on('movies')
                 ->onDelete('cascade');
 
-            // Optional: cegah movie yang sama ditambahkan dua kali oleh user yang sama
             $table->unique(['user_id', 'movie_id']);
         });
     }
